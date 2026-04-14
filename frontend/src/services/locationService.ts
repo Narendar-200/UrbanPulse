@@ -1,61 +1,29 @@
-import { supabase, type Location } from '../lib/supabase';
+import type { Location } from "../lib/supabase";
+import { apiRequest } from "./apiClient";
 
 export const locationService = {
   async getAll(): Promise<Location[]> {
-    const { data, error } = await supabase
-      .from('locations')
-      .select('*')
-      .order('city', { ascending: true });
-    if (error) throw error;
-    return data || [];
+    return apiRequest<Location[]>("/locations");
   },
 
   async getById(id: string): Promise<Location | null> {
-    const { data, error } = await supabase
-      .from('locations')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw error;
-    return data;
+    return apiRequest<Location | null>(`/locations/${id}`);
   },
 
   async getByZoneType(zoneType: 'residential' | 'commercial' | 'highway'): Promise<Location[]> {
-    const { data, error } = await supabase
-      .from('locations')
-      .select('*')
-      .eq('zone_type', zoneType)
-      .order('city', { ascending: true });
-    if (error) throw error;
-    return data || [];
+    return apiRequest<Location[]>(`/locations?zoneType=${zoneType}`);
   },
 
   async create(location: Omit<Location, 'id' | 'created_at'>): Promise<Location> {
-    const { data, error } = await supabase
-      .from('locations')
-      .insert([location])
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    // Requested flow: create new locations through /api/traffic.
+    return apiRequest<Location>("/traffic", { method: "POST", body: location });
   },
 
   async update(id: string, updates: Partial<Omit<Location, 'id' | 'created_at'>>): Promise<Location> {
-    const { data, error } = await supabase
-      .from('locations')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    return apiRequest<Location>(`/locations/${id}`, { method: "PUT", body: updates });
   },
 
   async delete(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('locations')
-      .delete()
-      .eq('id', id);
-    if (error) throw error;
+    await apiRequest<void>(`/locations/${id}`, { method: "DELETE" });
   },
 };

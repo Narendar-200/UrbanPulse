@@ -1,36 +1,27 @@
-import { supabase, type TrafficLog } from '../lib/supabase';
+import type { TrafficLog } from "../lib/supabase";
+import { apiRequest, API_BASE_URL } from "./apiClient";
 
 export const trafficService = {
+  getLiveStreamUrl(): string {
+    return `${API_BASE_URL}/traffic/stream`;
+  },
+
   async getAll(limit = 50, offset = 0): Promise<{ data: TrafficLog[]; count: number }> {
-    const { data, error, count } = await supabase
-      .from('traffic_logs')
-      .select('*', { count: 'exact' })
-      .order('timestamp', { ascending: false })
-      .range(offset, offset + limit - 1);
-    if (error) throw error;
-    return { data: data || [], count: count || 0 };
+    return apiRequest<{ data: TrafficLog[]; count: number }>(`/traffic?limit=${limit}&offset=${offset}`);
   },
 
   async getByLocation(locationId: string, limit = 100, offset = 0): Promise<TrafficLog[]> {
-    const { data, error } = await supabase
-      .from('traffic_logs')
-      .select('*')
-      .eq('location_id', locationId)
-      .order('timestamp', { ascending: false })
-      .range(offset, offset + limit - 1);
-    if (error) throw error;
-    return data || [];
+    const response = await apiRequest<{ data: TrafficLog[]; count: number }>(
+      `/traffic?locationId=${locationId}&limit=${limit}&offset=${offset}`
+    );
+    return response.data;
   },
 
   async getByDateRange(startDate: string, endDate: string): Promise<TrafficLog[]> {
-    const { data, error } = await supabase
-      .from('traffic_logs')
-      .select('*')
-      .gte('timestamp', startDate)
-      .lte('timestamp', endDate)
-      .order('timestamp', { ascending: true });
-    if (error) throw error;
-    return data || [];
+    const response = await apiRequest<{ data: TrafficLog[]; count: number }>(
+      `/traffic?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&limit=10000&offset=0`
+    );
+    return response.data.reverse();
   },
 
   async getByLocationAndDateRange(
@@ -38,87 +29,37 @@ export const trafficService = {
     startDate: string,
     endDate: string
   ): Promise<TrafficLog[]> {
-    const { data, error } = await supabase
-      .from('traffic_logs')
-      .select('*')
-      .eq('location_id', locationId)
-      .gte('timestamp', startDate)
-      .lte('timestamp', endDate)
-      .order('timestamp', { ascending: true });
-    if (error) throw error;
-    return data || [];
+    const response = await apiRequest<{ data: TrafficLog[]; count: number }>(
+      `/traffic?locationId=${locationId}&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&limit=10000&offset=0`
+    );
+    return response.data.reverse();
   },
 
   async getLatestByLocation(locationId: string): Promise<TrafficLog | null> {
-    const { data, error } = await supabase
-      .from('traffic_logs')
-      .select('*')
-      .eq('location_id', locationId)
-      .order('timestamp', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) throw error;
-    return data;
+    return apiRequest<TrafficLog | null>(`/traffic/latest/${locationId}`);
   },
 
   async getHighCongestion(threshold = 80): Promise<TrafficLog[]> {
-    const { data, error } = await supabase
-      .from('traffic_logs')
-      .select('*')
-      .gte('density_level', threshold)
-      .order('timestamp', { ascending: false })
-      .limit(100);
-    if (error) throw error;
-    return data || [];
+    const response = await apiRequest<{ data: TrafficLog[]; count: number }>(
+      `/traffic?threshold=${threshold}&limit=100&offset=0`
+    );
+    return response.data;
   },
 
   async create(log: Omit<TrafficLog, 'id' | 'created_at'>): Promise<TrafficLog> {
-    const { data, error } = await supabase
-      .from('traffic_logs')
-      .insert([log])
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    return apiRequest<TrafficLog>("/traffic", { method: "POST", body: log });
   },
 
   async bulkCreate(logs: Omit<TrafficLog, 'id' | 'created_at'>[]): Promise<TrafficLog[]> {
-    const { data, error } = await supabase
-      .from('traffic_logs')
-      .insert(logs)
-      .select();
-    if (error) throw error;
-    return data || [];
+    return apiRequest<TrafficLog[]>("/traffic/bulk", { method: "POST", body: { logs } });
   },
 
   async delete(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('traffic_logs')
-      .delete()
-      .eq('id', id);
-    if (error) throw error;
+    await apiRequest<void>(`/traffic/${id}`, { method: "DELETE" });
   },
 
   async deleteBySimulationRun(runId: string): Promise<number> {
-    const { data: runData, error: runError } = await supabase
-      .from('simulation_runs')
-      .select('config')
-      .eq('id', runId)
-      .maybeSingle();
-    if (runError) throw runError;
-
-    if (!runData) return 0;
-
-    const config = runData.config as { location_ids?: string[] };
-    const locationIds = config.location_ids || [];
-
-    const { count, error } = await supabase
-      .from('traffic_logs')
-      .delete()
-      .eq('data_source', 'simulated')
-      .in('location_id', locationIds);
-    if (error) throw error;
-
-    return count || 0;
+    const response = await apiRequest<{ deleted: number }>(`/simulations/${runId}/data`, { method: "DELETE" });
+    return response.deleted;
   },
 };

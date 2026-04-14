@@ -9,6 +9,8 @@ export const DataManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showLocationForm, setShowLocationForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [formData, setFormData] = useState<{
     name: string;
     city: string;
@@ -39,6 +41,7 @@ export const DataManagement: React.FC = () => {
   };
 
   const handleAddLocation = () => {
+    setFormError(null);
     setFormData({
       name: '',
       city: '',
@@ -51,6 +54,7 @@ export const DataManagement: React.FC = () => {
   };
 
   const handleEditLocation = (location: Location) => {
+    setFormError(null);
     setFormData({
       name: location.name,
       city: location.city,
@@ -64,17 +68,41 @@ export const DataManagement: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+
+    if (!formData.name.trim() || !formData.city.trim()) {
+      setFormError('Name and city are required.');
+      return;
+    }
+    if (Number.isNaN(formData.latitude) || Number.isNaN(formData.longitude)) {
+      setFormError('Latitude and longitude must be valid numbers.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
       if (editingId) {
-        await locationService.update(editingId, formData);
+        const updated = await locationService.update(editingId, formData);
+        setLocations((prev) =>
+          prev.map((location) => (location.id === editingId ? updated : location))
+        );
       } else {
-        await locationService.create(formData);
+        const created = await locationService.create(formData);
+        setLocations((prev) => [...prev, created].sort((a, b) => a.city.localeCompare(b.city)));
       }
+
+      setFormData({
+        name: '',
+        city: '',
+        latitude: 0,
+        longitude: 0,
+        zone_type: 'commercial',
+      });
       setShowLocationForm(false);
-      loadLocations();
     } catch (error) {
-      console.error('Error saving location:', error);
-      alert('Error saving location');
+      setFormError(error instanceof Error ? error.message : 'Error saving location');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -158,6 +186,11 @@ export const DataManagement: React.FC = () => {
             {editingId ? 'Edit Location' : 'New Location'}
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {formError && (
+              <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">
+                {formError}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Name</label>
@@ -224,9 +257,10 @@ export const DataManagement: React.FC = () => {
             <div className="flex gap-3">
               <button
                 type="submit"
-                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium transition-colors"
+                disabled={submitting}
+                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white rounded-lg font-medium transition-colors"
               >
-                {editingId ? 'Update' : 'Create'} Location
+                {submitting ? 'Saving...' : `${editingId ? 'Update' : 'Create'} Location`}
               </button>
               <button
                 type="button"

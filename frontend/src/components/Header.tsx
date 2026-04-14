@@ -1,9 +1,14 @@
 import React, { useRef, useEffect } from 'react';
-import { Clock, User, Settings, LogOut, ChevronDown } from 'lucide-react';
+import { Clock, User, Settings, LogOut, ChevronDown, Menu } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-export const Header: React.FC = () => {
+type HeaderProps = {
+  mobileNavOpen: boolean;
+  onToggleMobileNav: () => void;
+};
+
+export const Header: React.FC<HeaderProps> = ({ mobileNavOpen, onToggleMobileNav }) => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = React.useState<string>(new Date().toLocaleTimeString());
@@ -41,12 +46,23 @@ export const Header: React.FC = () => {
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 fixed right-0 top-0 left-64 z-40 shadow-sm">
+    <header className="h-16 bg-white/85 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between px-4 sm:px-6 lg:px-8 fixed right-0 top-0 left-0 lg:left-64 z-40 shadow-sm">
       <div className="flex items-center gap-2 text-slate-600">
+        <button
+          onClick={onToggleMobileNav}
+          className={`lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors ${
+            mobileNavOpen
+              ? 'bg-amber-50 border-amber-300 text-amber-700'
+              : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+          }`}
+          aria-label="Toggle navigation menu"
+        >
+          <Menu className="w-4 h-4" />
+        </button>
         <Clock className="w-4 h-4 text-slate-400" />
-        <span className="text-sm font-medium">{currentTime}</span>
-        <span className="mx-2 text-slate-300">|</span>
-        <span className="text-sm text-slate-500">
+        <span className="text-sm font-medium hidden sm:inline">{currentTime}</span>
+        <span className="mx-2 text-slate-300 hidden sm:inline">|</span>
+        <span className="text-xs sm:text-sm text-slate-500">
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
         </span>
       </div>

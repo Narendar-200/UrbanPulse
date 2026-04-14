@@ -9,7 +9,6 @@ import { FilterBar } from '../components/FilterBar';
 import { KPICard } from '../components/KPICard';
 import { trafficService } from '../services/trafficService';
 import { analyticsService } from '../services/analyticsService';
-import { supabase } from '../lib/supabase';
 
 const chartTooltipStyle = {
   contentStyle: {
@@ -122,13 +121,10 @@ export const Dashboard: React.FC = () => {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
-    const channel = supabase
-      .channel('dashboard_realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'traffic_logs' }, () => {
-        fetchData();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const intervalId = window.setInterval(() => {
+      fetchData();
+    }, 15000);
+    return () => window.clearInterval(intervalId);
   }, [fetchData]);
 
   const kpiCards = [

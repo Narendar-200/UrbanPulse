@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { apiRequest } from "./apiClient";
 
 export type HourlyAggregate = {
   hour: number;
@@ -47,184 +47,28 @@ export type BestTravelTime = {
 
 export const analyticsService = {
   async getPeakTrafficHours(locationId: string, days = 7): Promise<HourlyAggregate[]> {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
-    const { data: logs, error } = await supabase
-      .from('traffic_logs')
-      .select('timestamp, density_level')
-      .eq('location_id', locationId)
-      .gte('timestamp', startDate.toISOString());
-
-    if (error) throw error;
-
-    const hourlyData = new Map<number, number[]>();
-
-    (logs || []).forEach((log: { timestamp: string; density_level: number }) => {
-      const hour = new Date(log.timestamp).getHours();
-      if (!hourlyData.has(hour)) {
-        hourlyData.set(hour, []);
-      }
-      hourlyData.get(hour)!.push(log.density_level);
-    });
-
-    const result: HourlyAggregate[] = [];
-    for (let hour = 0; hour < 24; hour++) {
-      const densities = hourlyData.get(hour) || [0];
-      result.push({
-        hour,
-        avg_density: Math.round(densities.reduce((a, b) => a + b, 0) / densities.length),
-        max_density: Math.max(...densities),
-        min_density: Math.min(...densities),
-      });
-    }
-
-    return result;
+    return apiRequest<HourlyAggregate[]>(`/analytics/peak-traffic-hours/${locationId}?days=${days}`);
   },
 
   async getBusiestLocations(days = 7): Promise<LocationAggregate[]> {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
-    const { data: logs, error } = await supabase
-      .from('traffic_logs')
-      .select('location_id, density_level')
-      .gte('timestamp', startDate.toISOString());
-
-    if (error) throw error;
-
-    const { data: locations, error: locError } = await supabase
-      .from('locations')
-      .select('id, name');
-
-    if (locError) throw locError;
-
-    const locationMap = new Map((locations || []).map((l: any) => [l.id, l.name]));
-    const locationStats = new Map<string, { densities: number[]; count: number }>();
-
-    (logs || []).forEach((log: { location_id: string; density_level: number }) => {
-      if (!locationStats.has(log.location_id)) {
-        locationStats.set(log.location_id, { densities: [], count: 0 });
-      }
-      locationStats.get(log.location_id)!.densities.push(log.density_level);
-      locationStats.get(log.location_id)!.count += 1;
-    });
-
-    const result: LocationAggregate[] = [];
-    locationStats.forEach((stats, locationId) => {
-      result.push({
-        location_id: locationId,
-        location_name: locationMap.get(locationId) || 'Unknown',
-        avg_density: Math.round(stats.densities.reduce((a, b) => a + b, 0) / stats.densities.length),
-        max_density: Math.max(...stats.densities),
-        record_count: stats.count,
-      });
-    });
-
-    return result.sort((a, b) => b.avg_density - a.avg_density);
+    return apiRequest<LocationAggregate[]>(`/analytics/busiest-locations?days=${days}`);
   },
 
   async getDailyTrend(locationId: string, days = 7): Promise<DailyTrend[]> {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
-    const { data: logs, error } = await supabase
-      .from('traffic_logs')
-      .select('timestamp, density_level')
-      .eq('location_id', locationId)
-      .gte('timestamp', startDate.toISOString());
-
-    if (error) throw error;
-
-    const dailyData = new Map<string, number[]>();
-
-    (logs || []).forEach((log: { timestamp: string; density_level: number }) => {
-      const date = new Date(log.timestamp).toISOString().split('T')[0];
-      if (!dailyData.has(date)) {
-        dailyData.set(date, []);
-      }
-      dailyData.get(date)!.push(log.density_level);
-    });
-
-    const result: DailyTrend[] = [];
-    const sortedDates = Array.from(dailyData.keys()).sort();
-
-    sortedDates.forEach((date) => {
-      const densities = dailyData.get(date)!;
-      result.push({
-        date,
-        avg_density: Math.round(densities.reduce((a, b) => a + b, 0) / densities.length),
-      });
-    });
-
-    return result;
+    return apiRequest<DailyTrend[]>(`/analytics/daily-trend/${locationId}?days=${days}`);
   },
 
   async getWeeklyHeatmap(locationId: string, weeks = 4): Promise<WeeklyHeatmapCell[]> {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - weeks * 7);
-
-    const { data: logs, error } = await supabase
-      .from('traffic_logs')
-      .select('timestamp, density_level')
-      .eq('location_id', locationId)
-      .gte('timestamp', startDate.toISOString());
-
-    if (error) throw error;
-
-    const heatmapData = new Map<string, number[]>();
-
-    (logs || []).forEach((log: { timestamp: string; density_level: number }) => {
-      const date = new Date(log.timestamp);
-      const dayOfWeek = date.getDay();
-      const hour = date.getHours();
-      const key = `${dayOfWeek}_${hour}`;
-
-      if (!heatmapData.has(key)) {
-        heatmapData.set(key, []);
-      }
-      heatmapData.get(key)!.push(log.density_level);
-    });
-
-    const result: WeeklyHeatmapCell[] = [];
-    for (let day = 0; day < 7; day++) {
-      for (let hour = 0; hour < 24; hour++) {
-        const key = `${day}_${hour}`;
-        const densities = heatmapData.get(key) || [0];
-        result.push({
-          day_of_week: day,
-          hour,
-          avg_density: Math.round(densities.reduce((a, b) => a + b, 0) / densities.length),
-        });
-      }
-    }
-
-    return result;
+    const hourly = await apiRequest<HourlyAggregate[]>(`/analytics/peak-traffic-hours/${locationId}?days=${weeks * 7}`);
+    return hourly.flatMap((point) => ({
+      day_of_week: 0,
+      hour: point.hour,
+      avg_density: point.avg_density,
+    }));
   },
 
   async getPeakHourInsights(locationId: string, days = 7): Promise<PeakHourInsight> {
-    const hourlyData = await this.getPeakTrafficHours(locationId, days);
-    const locationName = await supabase
-      .from('locations')
-      .select('name')
-      .eq('id', locationId)
-      .maybeSingle();
-
-    const peakHour = hourlyData.reduce((max, curr) =>
-      curr.avg_density > max.avg_density ? curr : max
-    );
-    const lowHour = hourlyData.reduce((min, curr) =>
-      curr.avg_density < min.avg_density ? curr : min
-    );
-
-    return {
-      location_id: locationId,
-      location_name: locationName.data?.name || 'Unknown',
-      peak_hour: peakHour.hour,
-      peak_density: peakHour.avg_density,
-      low_hour: lowHour.hour,
-      low_density: lowHour.avg_density,
-    };
+    return apiRequest<PeakHourInsight>(`/analytics/peak-hour-insights/${locationId}?days=${days}`);
   },
 
   async getBestTravelTimes(locationId: string, days = 14): Promise<BestTravelTime> {
@@ -236,15 +80,9 @@ export const analyticsService = {
       day_pattern: 'All days',
     }));
 
-    const locationName = await supabase
-      .from('locations')
-      .select('name')
-      .eq('id', locationId)
-      .maybeSingle();
-
     return {
       location_id: locationId,
-      location_name: locationName.data?.name || 'Unknown',
+      location_name: "Unknown",
       best_times: bestTimes,
     };
   },
@@ -271,36 +109,26 @@ export const analyticsService = {
     period2: HourlyAggregate[];
   }> {
     const getHourlyData = async (start: string, end: string): Promise<HourlyAggregate[]> => {
-      const { data: logs, error } = await supabase
-        .from('traffic_logs')
-        .select('timestamp, density_level')
-        .eq('location_id', locationId)
-        .gte('timestamp', start)
-        .lte('timestamp', end);
-
-      if (error) throw error;
-
-      const hourlyData = new Map<number, number[]>();
-
-      (logs || []).forEach((log: { timestamp: string; density_level: number }) => {
+      const response = await apiRequest<{ data: Array<{ timestamp: string; density_level: number }> }>(
+        `/traffic?locationId=${locationId}&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}&limit=10000&offset=0`
+      );
+      const groups = new Map<number, number[]>();
+      response.data.forEach((log) => {
         const hour = new Date(log.timestamp).getHours();
-        if (!hourlyData.has(hour)) {
-          hourlyData.set(hour, []);
-        }
-        hourlyData.get(hour)!.push(log.density_level);
+        const values = groups.get(hour) || [];
+        values.push(log.density_level);
+        groups.set(hour, values);
       });
-
       const result: HourlyAggregate[] = [];
-      for (let hour = 0; hour < 24; hour++) {
-        const densities = hourlyData.get(hour) || [0];
+      for (let hour = 0; hour < 24; hour += 1) {
+        const values = groups.get(hour) || [0];
         result.push({
           hour,
-          avg_density: Math.round(densities.reduce((a, b) => a + b, 0) / densities.length),
-          max_density: Math.max(...densities),
-          min_density: Math.min(...densities),
+          avg_density: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+          max_density: Math.max(...values),
+          min_density: Math.min(...values),
         });
       }
-
       return result;
     };
 

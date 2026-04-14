@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Play, Pause, AlertCircle, CheckCircle } from 'lucide-react';
 import { locationService } from '../services/locationService';
-import { simulationService } from '../services/simulationService';
-import { supabase, type Location } from '../lib/supabase';
+import { simulationService, type LiveSimulationPoint } from '../services/simulationService';
+import type { Location } from '../lib/supabase';
 
 export const Simulation: React.FC = () => {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -20,22 +20,46 @@ export const Simulation: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [simulations, setSimulations] = useState<any[]>([]);
+  const [liveData, setLiveData] = useState<LiveSimulationPoint[]>([]);
+  const [liveLoading, setLiveLoading] = useState(true);
+  const [liveError, setLiveError] = useState<string | null>(null);
 
   useEffect(() => {
     locationService.getAll().then(setLocations);
     fetchSimulations();
   }, []);
 
-  const fetchSimulations = async () => {
-    const { data, error } = await supabase
-      .from('simulation_runs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10);
+  useEffect(() => {
+    let isMounted = true;
 
-    if (!error && data) {
-      setSimulations(data);
-    }
+    const fetchLiveData = async () => {
+      try {
+        if (isMounted) setLiveError(null);
+        const response = await simulationService.getLiveSimulation();
+        if (isMounted) {
+          setLiveData(response.data || []);
+          setLiveLoading(false);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setLiveError(error instanceof Error ? error.message : 'Failed to load live simulation data');
+          setLiveLoading(false);
+        }
+      }
+    };
+
+    fetchLiveData();
+    const intervalId = window.setInterval(fetchLiveData, 4000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const fetchSimulations = async () => {
+    const data = await simulationService.getRecentRuns();
+    setSimulations(data);
   };
 
   const handleSelectLocation = (id: string) => {
@@ -279,6 +303,49 @@ export const Simulation: React.FC = () => {
               ))}
             </div>
           )}
+
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <h3 className="text-base font-semibold text-slate-900 mb-3">Live Simulation Feed (auto-refresh)</h3>
+            {liveError && (
+              <div className="mb-3 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs">
+                {liveError}
+              </div>
+            )}
+            {liveLoading ? (
+              <div className="text-sm text-slate-500">Loading live simulation data...</div>
+            ) : liveData.length === 0 ? (
+              <div className="text-sm text-slate-500">No live simulation data available.</div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {liveData.map((point) => (
+                  <div key={point.location_id} className="p-3 border border-slate-200 rounded-lg bg-slate-50">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-slate-900 text-sm">{point.area}</p>
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-semibold uppercase ${
+                          point.traffic_level === 'critical'
+                            ? 'bg-red-100 text-red-700'
+                            : point.traffic_level === 'high'
+                              ? 'bg-orange-100 text-orange-700'
+                              : point.traffic_level === 'moderate'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-green-100 text-green-700'
+                        }`}
+                      >
+                        {point.traffic_level}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1">
+                      Density: {point.density_level}% | Vehicles: {point.vehicles}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {new Date(point.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

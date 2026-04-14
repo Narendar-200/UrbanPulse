@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Plus, Trash2, RefreshCw, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { trafficService } from '../services/trafficService';
 import { locationService } from '../services/locationService';
-import { supabase } from '../lib/supabase';
 import type { TrafficLog, Location } from '../lib/supabase';
 
 type LogWithName = TrafficLog & { location_name?: string };
@@ -87,36 +86,48 @@ export const LiveMonitor: React.FC = () => {
   useEffect(() => {
     if (!isLive) return;
 
-    const channel = supabase
-      .channel('traffic_logs_realtime')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'traffic_logs' },
-        async (payload) => {
-          const newLog = payload.new as TrafficLog;
-          const locName = locations.find((l) => l.id === newLog.location_id)?.name || 'Unknown';
-          const logWithName: LogWithName = { ...newLog, location_name: locName };
+    const eventSource = new EventSource(trafficService.getLiveStreamUrl());
 
-          setLogs((prev) => [logWithName, ...prev].slice(0, 50));
-          setNewRowIds((prev) => {
-            const next = new Set(prev);
-            next.add(newLog.id);
-            setTimeout(() => setNewRowIds((s) => { const ns = new Set(s); ns.delete(newLog.id); return ns; }), 2000);
+    eventSource.onmessage = (event) => {
+      const payload = JSON.parse(event.data) as { logs: LogWithName[] };
+      if (!payload.logs) return;
+
+      setLogs((prev) => {
+        const previousIds = new Set(prev.map((log) => log.id));
+        const incomingIds = payload.logs.map((log) => log.id).filter((id) => !previousIds.has(id));
+
+        if (incomingIds.length > 0) {
+          setNewRowIds((current) => {
+            const next = new Set(current);
+            incomingIds.forEach((id) => next.add(id));
             return next;
           });
+          incomingIds.forEach((id) => {
+            setTimeout(() => {
+              setNewRowIds((current) => {
+                const next = new Set(current);
+                next.delete(id);
+                return next;
+              });
+            }, 2000);
+          });
         }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'traffic_logs' },
-        (payload) => {
-          setLogs((prev) => prev.filter((l) => l.id !== (payload.old as TrafficLog).id));
-        }
-      )
-      .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [isLive, locations]);
+        return payload.logs;
+      });
+      setLoading(false);
+      setError(null);
+    };
+
+    eventSource.onerror = () => {
+      setError('Live stream disconnected. Click Refresh to fetch latest data.');
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [isLive]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,7 +190,7 @@ export const LiveMonitor: React.FC = () => {
             }`}
           >
             {isLive
-              ? <><Wifi className="w-4 h-4" /><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block" /> Live</ span></>
+              ? <><Wifi className="w-4 h-4" /><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block" /> Live</span></>
               : <><WifiOff className="w-4 h-4" /> Paused</>
             }
           </button>

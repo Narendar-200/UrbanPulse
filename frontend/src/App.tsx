@@ -21,26 +21,22 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
-
           <Route
-            path="/*"
             element={
               <ProtectedRoute>
-                <Layout>
-                  <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/monitor" element={<LiveMonitor />} />
-                    <Route path="/analytics" element={<Analytics />} />
-                    <Route path="/simulation" element={<Simulation />} />
-                    <Route path="/data" element={<DataManagement />} />
-                    <Route path="/insights" element={<Insights />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </Layout>
+                <Layout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/monitor" element={<LiveMonitor />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/simulation" element={<Simulation />} />
+            <Route path="/data" element={<DataManagement />} />
+            <Route path="/insights" element={<Insights />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </AuthProvider>
